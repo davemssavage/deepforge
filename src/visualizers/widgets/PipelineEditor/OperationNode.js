@@ -60,6 +60,33 @@ define([
         this._visiblePorts = null;
     };
 
+    OperationNode.prototype.update = function(desc) {
+        // Migrate input port conn info to new desc
+        var inputConns = {};
+        this.inputs.forEach(port => inputConns[port.id] = port.connection);
+
+        DAGItem.prototype.update.call(this, desc);
+
+        this.inputs = this.desc.inputs;
+        this.outputs = this.desc.outputs;
+        this.inputs.forEach(port => port.connection = inputConns[port.id]);
+    };
+
+    OperationNode.prototype.checkInputs = function() {
+        var count = this.inputs.filter(port => !port.connection).length;
+
+        if (count) {
+            this.warn(`Missing ${count} input${count > 1 ? 's' : ''}`);
+        } else {
+            this.clear();
+        }
+    };
+
+    OperationNode.prototype.redraw = function(/*desc*/) {
+        DAGItem.prototype.redraw.call(this);
+        this.checkInputs();
+    };
+
     OperationNode.prototype.updatePort = function(/*desc*/) {
         // TODO
     };
