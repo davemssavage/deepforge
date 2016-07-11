@@ -1,0 +1,148 @@
+<!DOCTYPE HTML>
+<!--
+	Hyperspace by HTML5 UP
+	html5up.net | @ajlkn
+	Free for personal and commercial use under the CCA 3.0 license (html5up.net/license)
+-->
+<html>
+	<head>
+		<title>DeepForge</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<!--[if lte IE 8]><script src="assets/js/ie/html5shiv.js"></script><![endif]-->
+		<link rel="stylesheet" href="assets/css/main.css" />
+        <link href='https://fonts.googleapis.com/css?family=Montserrat' rel='stylesheet' type='text/css'>
+        <link rel="shortcut icon" href="anvil.png" type="image/x-icon"/>
+		<!--[if lte IE 9]><link rel="stylesheet" href="assets/css/ie9.css" /><![endif]-->
+		<!--[if lte IE 8]><link rel="stylesheet" href="assets/css/ie8.css" /><![endif]-->
+	</head>
+	<body>
+
+		<!-- Sidebar -->
+			<section id="sidebar">
+				<div class="inner">
+					<nav>
+						<ul>
+							<li><a href="#intro">Welcome</a></li>
+							<li><a href="#one">Overview</a></li>
+							<li><a href="#install">Installation</a></li>
+							<li><a href="#resources">Resources</a></li>
+						</ul>
+					</nav>
+				</div>
+			</section>
+
+		<!-- Wrapper -->
+			<div id="wrapper">
+
+				<!-- Intro -->
+					<section id="intro" class="wrapper style1 fullscreen fade-up">
+						<div class="inner">
+							<h1 style="font-family: 'Montserrat', sans-serif">DeepForge</h1>
+							<p>Development Environment for Deep Learning with <a href="http://torch.ch">Torch</a><br />
+							</p>
+							<ul class="actions">
+								<li><a href="https://github.com/dfst/deepforge/wiki" class="button scrolly">Learn more</a></li>
+							</ul>
+						</div>
+					</section>
+
+				<!-- One -->
+					<section id="one" class="wrapper style2 spotlights">
+						<section>
+							<a href="#" class="image"><img src="images/archeditor.png" alt="" data-position="center center" /></a>
+							<div class="content">
+								<div class="inner">
+									<h2>Build Architectures</h2>
+									<p>Use DeepForge's visual architecture editor to create and edit neural network architectures. Easily drop down to a torch text editor to define custom torch layers and immediately use them in your architectures!</p>
+								</div>
+							</div>
+						</section>
+						<section>
+							<a href="#" class="image"><img src="images/pipelineeditor.png" alt="" data-position="top center" /></a>
+							<div class="content">
+								<div class="inner">
+									<h2>Create Training Pipelines</h2>
+									<p>Compose training and testing pipelines from torch operations. Supports easily dropping into a torch text editor to define custom operation.</p>
+								</div>
+							</div>
+						</section>
+						<section>
+							<a href="#" class="image"><img src="images/execview.png" alt="" data-position="25% 25%" /></a>
+							<div class="content">
+								<div class="inner">
+									<h2>Execute Pipelines</h2>
+									<p>After creating your pipelines, execute the operations over a number of distributed worker machines and view the progress and results of each remote operation from within the browser!</p>
+								</div>
+							</div>
+						</section>
+					</section>
+
+				<!-- Two -->
+					<section id="install" class="wrapper style1 fade-up">
+						<div class="inner">
+							<h2>Installation</h2>
+                            <!-- TODO: Add installation instructions -->
+							<p>DeepForge can be easily installed on OSX (and some linux distros) with the following command:</p>
+                            <code class="language-bash" data-lang="bash">
+                                curl -o- https://raw.githubusercontent.com/dfst/deepforge/master/install.sh | bash
+                            </code>
+                            <p></br>To install DeepForge for use with distributed pipeline execution, check out the custom installation options!</p>
+							<ul class="actions">
+								<li><a href="https://github.com/dfst/deepforge/wiki/Installation-Guide" class="button">Custom Install</a></li>
+							</ul>
+						</div>
+					</section>
+
+				<!-- Three -->
+					<section id="resources" class="wrapper style2 fade-up">
+						<div class="inner">
+							<h2>Additional Resources</h2>
+                            <!--
+                            Resources:
+                              - Examples
+                              - Screencasts
+                              - Gitter
+                              - Issue tracker
+                                   -->
+                            <ul class="contact">
+                                <li>
+                                    <h3><a href="https://github.com/dfst/deepforge/wiki/Examples">Examples and walkthroughs</a></h3>
+                                </li>
+                                <li>
+                                    <h3>
+                                        <a href="https://gitter.im/dfst/deepforge">Chatroom</a>
+                                    </h3>
+                                </li>
+                                <li>
+                                    <h3>
+                                        <a href="https://github.com/dfst/deepforge/issues">Known Issues</a>
+                                    </h3>
+                                </li>
+                            </ul>
+						</div>
+					</section>
+			</div>
+
+		<!-- Footer -->
+			<footer id="footer" class="wrapper style1-alt">
+				<div class="inner">
+					<ul class="menu">
+						<li>&copy; Brian Broll. All rights reserved.</li><li>Design: <a href="http://html5up.net">HTML5 UP</a></li>
+					</ul>
+				</div>
+			</footer>
+
+            <a href="https://github.com/dfst/deepforge">
+                <img style="position: absolute; top: 0; right: 0; border: 0;" src="https://camo.githubusercontent.com/a6677b08c955af8400f44c6298f40e7d19cc5b2d/68747470733a2f2f73332e616d617a6f6e6177732e636f6d2f6769746875622f726962626f6e732f666f726b6d655f72696768745f677261795f3664366436642e706e67" alt="Fork me on GitHub" data-canonical-src="https://s3.amazonaws.com/github/ribbons/forkme_right_gray_6d6d6d.png"></a>
+		<!-- Scripts -->
+			<script src="assets/js/jquery.min.js"></script>
+			<script src="assets/js/jquery.scrollex.min.js"></script>
+			<script src="assets/js/jquery.scrolly.min.js"></script>
+			<script src="assets/js/skel.min.js"></script>
+			<script src="assets/js/util.js"></script>
+			<!--[if lte IE 8]><script src="assets/js/ie/respond.min.js"></script><![endif]-->
+			<script src="assets/js/main.js"></script>
+
+	</body>
+</html>
