@@ -4,7 +4,7 @@ define([
 
     'intern!bdd',
     'intern/dojo/node!child_process',
-    'intern/dojo/node!../../globals',
+    'intern/dojo/node!../../globals'
 ], function (
     assert,
     bdd,
@@ -25,7 +25,6 @@ define([
                 .get('http://localhost:'+port)
                 .setFindTimeout(5000)
                 .findByCssSelector('.projects-dialog.modal')
-                //.findByCssSelector('.btn-create-new')
                 .isDisplayed()
                 .then(function(displayed) {
                     console.log('displayed is', displayed);
@@ -53,18 +52,6 @@ define([
                     assert(displayed, 'fab is not shown!');
                 });
         });
-
-        //bdd.it('should load main view', function() {
-            //return this.remote
-                //.get('http://localhost:'+port)
-                //.setFindTimeout(5000)
-                //.findByCssSelector('#pluginBtn')
-                //.isDisplayed()
-                //.then(function(displayed) {
-                    //console.log('displayed is', displayed);
-                    //assert(displayed, 'Logo is not found');
-                //});
-        //});
     });
 
 });
