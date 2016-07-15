@@ -34,24 +34,26 @@ testFixture.requirejs.config({
 testFixture.getGmeConfig = getGmeConfig;
 
 // DeepForge specific stuff
-// TODO
 var DeepForge = {};
 
 // Start the server
 DeepForge.startServer = function(done) {
-    var myServer = new WebGME.standaloneServer(gmeConfig);
+    var config = getGmeConfig(),
+        myServer;
+
+    myServer = new WebGME.standaloneServer(config);
     myServer.start(function (err) {
         if (err) {
             throw err;
         }
 
-        console.log('DeepForge now listening on port', gmeConfig.server.port);
         done();
     });
 };
 
 // Start the worker
 DeepForge.startWorker = function() {
+    // TODO
 };
 // TODO
 

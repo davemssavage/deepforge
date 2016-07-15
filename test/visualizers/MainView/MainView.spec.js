@@ -15,8 +15,9 @@ define([
         port = GLOBALS.getGmeConfig().server.port;
 
     bdd.describe('Index', function() {
-        bdd.before(function(done) {
-            GLOBALS.DeepForge.startServer(done);
+        bdd.before(function() {
+            var promise = this.async(2000);
+            GLOBALS.DeepForge.startServer(promise.resolve);
         });
 
         bdd.it('should show project list', function() {
