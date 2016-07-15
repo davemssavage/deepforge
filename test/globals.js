@@ -33,5 +33,29 @@ testFixture.requirejs.config({
 });
 testFixture.getGmeConfig = getGmeConfig;
 
+// DeepForge specific stuff
+// TODO
+var DeepForge = {};
+
+// Start the server
+DeepForge.startServer = function(done) {
+    var myServer = new WebGME.standaloneServer(gmeConfig);
+    myServer.start(function (err) {
+        if (err) {
+            throw err;
+        }
+
+        console.log('DeepForge now listening on port', gmeConfig.server.port);
+        done();
+    });
+};
+
+// Start the worker
+DeepForge.startWorker = function() {
+};
+// TODO
+
+testFixture.DeepForge = DeepForge;
+
 testFixture.DF_SEED_DIR = testFixture.path.join(__dirname, '..', 'src', 'seeds');
 module.exports = testFixture;
