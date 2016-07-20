@@ -16,8 +16,12 @@ define([
 
     bdd.describe('Index', function() {
         bdd.before(function() {
-            var promise = this.async(2000);
+            var promise = this.async(7000);
             GLOBALS.DeepForge.startServer(promise.resolve);
+        });
+
+        bdd.after(function() {
+            GLOBALS.DeepForge.stopServer();
         });
 
         bdd.it('should show project list', function() {

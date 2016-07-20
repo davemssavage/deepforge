@@ -7,6 +7,8 @@
 'use strict';
 
 var testFixture = require('webgme/test/_globals'),
+    spawn = require('child_process').spawn,
+    path = require('path'),
     WEBGME_CONFIG_PATH = '../config';
 
 // This flag will make sure the config.test.js is being used
@@ -34,28 +36,43 @@ testFixture.requirejs.config({
 testFixture.getGmeConfig = getGmeConfig;
 
 // DeepForge specific stuff
-var DeepForge = {};
+var DeepForge = {},
+    job;
 
 // Start the server
 DeepForge.startServer = function(done) {
-    var config = getGmeConfig(),
-        myServer;
+    DeepForge.clearDatabase(startServer.bind(null, done));
+};
 
-    myServer = new WebGME.standaloneServer(config);
-    myServer.start(function (err) {
-        if (err) {
-            throw err;
+var startServer = function(done) {
+    // spawn a process
+    process.env.PORT = 9001;
+    job = spawn('npm', ['run', 'local'], {
+        detached: false,
+        cwd: path.join(__dirname, '..'),
+        env: process.env
+    });
+    job.stderr.on('data', data => process.stderr.write(data));
+    job.stdout.on('data', data => {
+        // Check for the deepforge message
+        process.stdout.write(data);
+        if (data.toString().indexOf('DeepForge') !== -1) {
+            done();
         }
-
-        done();
     });
 };
 
-// Start the worker
-DeepForge.startWorker = function() {
-    // TODO
+DeepForge.stopServer = function() {
+    job.kill();
 };
-// TODO
+
+DeepForge.clearDatabase = function(done) {
+    var cleanUp = require('webgme/src/bin/clean_up');
+    cleanUp({
+        branches: Infinity,
+        commits: Infinity
+    }).then(done);
+};
 
 testFixture.DeepForge = DeepForge;
 
