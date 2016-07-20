@@ -36,6 +36,7 @@ define([
         this._pointers = {};
 
         this._usage = {};  // info about input usage
+        this._inputs = {};
     };
 
     _.extend(
@@ -156,12 +157,17 @@ define([
             desc.color = this.getDescColor(gmeId);
             desc.isPrimitive = this.hasMetaName(gmeId, 'Primitive');
 
-            if (desc.container === 'inputs') {
-                desc.used = this.isUsedInCode(desc.name);
+            var used = desc.container === 'inputs' ?
+                this.isUsedInput(desc.name) : this.isUsedOutput(desc.name);
+            if (used !== null) {
+                desc.used = used;
                 this._usage[desc.id] = desc.used;
             } else {
-                desc.used = true;
+                desc.used = this._usage[desc.id] !== undefined ?
+                    this._usage[desc.id] : true;
             }
+
+            this._inputs[desc.id] = desc.container === 'inputs';
         }
         return desc;
     };
@@ -178,6 +184,7 @@ define([
             this._widget.removeNode(conn.id);
         }
         delete this._usage[gmeId];
+        delete this._inputs[gmeId];
     };
 
     OperationInterfaceEditorControl.prototype._onLoad = function(gmeId) {
@@ -197,7 +204,7 @@ define([
     };
 
     OperationInterfaceEditorControl.prototype._onUpdate = function(gmeId) {
-        var inputIds,
+        var variableIds,
             wasUsed,
             isUsed,
             name,
@@ -211,17 +218,24 @@ define([
             this.updatePtrs();
 
             // Update the remaining usage info
-            inputIds = Object.keys(this._usage);
-            code = this._client.getNode(this._currentNodeId).getAttribute('code');
-            ast = luajs.parser.parse(code);
-            for (var i = inputIds.length; i--;) {
-                wasUsed = this._usage[inputIds[i]];
-                name = this._client.getNode(inputIds[i]).getAttribute('name');
+            variableIds = Object.keys(this._usage);
 
-                isUsed = this.isUsedInCode(name, ast);
-                if (isUsed !== wasUsed) {
-                    this._onUpdate(inputIds[i]);
+            code = this._client.getNode(this._currentNodeId).getAttribute('code');
+            try {
+                ast = luajs.parser.parse(code);
+                for (var i = variableIds.length; i--;) {
+                    wasUsed = this._usage[variableIds[i]];
+                    name = this._client.getNode(variableIds[i]).getAttribute('name');
+
+                    isUsed = this._inputs[variableIds[i]] ?
+                        this.isUsedInput(name, ast) :
+                        this.isUsedOutput(name, ast);
+                    if (isUsed !== wasUsed) {
+                        this._onUpdate(variableIds[i]);
+                    }
                 }
+            } catch (e) {
+                this._logger.debug(`failed parsing lua: ${e}`);
             }
 
         } else if (this.containedInCurrent(gmeId) && this.hasMetaName(gmeId, 'Data')) {
@@ -240,14 +254,20 @@ define([
                 .items[0].id,
             target = this._client.getNode(targetId),
             decManager = this._client.decoratorManager,
-            Decorator = decManager.getDecoratorForWidget('OpIntPtrDecorator', 'EasyDAG');
+            Decorator = decManager.getDecoratorForWidget('OpIntPtrDecorator', 'EasyDAG'),
+            id = 'ptr_'+name,
+            used = this.isUsedInput(name);
+
+        if (used === null) {
+            used = this._usage[id] !== undefined ? this._usage[id] : true;
+        }
 
         return {
-            id: 'ptr_'+name,
+            id: id,
             isPointer: true,
             baseName: target.getAttribute('name'),
             Decorator: Decorator,
-            used: this.isUsedInCode(name),
+            used: used,
             attributes: {},
             name: name,
             parentId: this._currentNodeId
@@ -304,9 +324,13 @@ define([
     OperationInterfaceEditorControl.prototype.rmPtr = function(id) {
         // Remove the pointer's node
         this._widget.removeNode(id);
+
         // and connection
         var conn = this._connections[id];
         this._widget.removeNode(conn.id);
+
+        // and usage info
+        delete this._usage[id];
     };
 
     OperationInterfaceEditorControl.prototype.containedInCurrent = function(id) {
@@ -332,22 +356,35 @@ define([
     };
 
     ////////////////////// Unused input checking //////////////////////
-    OperationInterfaceEditorControl.prototype.isUsedInCode = function(name, ast) {
+    OperationInterfaceEditorControl.prototype.isUsedInput = function(name, ast) {
+        return this._isUsed(name, true, ast);
+    };
+
+    OperationInterfaceEditorControl.prototype.isUsedOutput = function(name, ast) {
+        return this._isUsed(name, false, ast);
+    };
+
+    OperationInterfaceEditorControl.prototype._isUsed = function(name, isInput, ast) {
         var code = this._client.getNode(this._currentNodeId).getAttribute('code'),
             r = new RegExp('\\b' + name + '\\b'),
             hasText = code.match(r) !== null;
 
         // verify that it is not used only in the left side of an assignment
         if (hasText) {
-            ast = ast || luajs.parser.parse(code);
-            return this.isUsedInNode(name, ast);
+            try {
+                ast = ast || luajs.parser.parse(code);
+                return isInput ? this.isUsedVariable(name, ast) : this.isReturnValue(name, ast);
+            } catch(e) {
+                this._logger.debug(`failed parsing lua: ${e}`);
+                return null;
+            }
         }
 
         return false;
     };
 
     // Check if it is used in the given ast node
-    OperationInterfaceEditorControl.prototype.isUsedInNode = function(name, node) {
+    OperationInterfaceEditorControl.prototype.isUsedVariable = function(name, node) {
         var isUsed = false,
             checker;
 
@@ -363,6 +400,31 @@ define([
 
         checker(node);
         return isUsed;
+    };
+
+    OperationInterfaceEditorControl.prototype.isReturnValue = function(name, ast) {
+        var firstReturn,
+            fields,
+            key,
+            node;
+
+        for (var i = ast.block.stats.length; i--;) {
+            node = ast.block.stats[i];
+            if (node.type === 'stat.return') {
+                // Check that it returns an object w/ a key of the given name
+                firstReturn = node.nret[0];
+                if (firstReturn && firstReturn.type === 'expr.constructor') {
+                    fields = firstReturn.fields;
+                    for (var j = fields.length; j--;) {
+                        key = fields[j].key;
+                        if (key.type === 'const.string' && key.val === name) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        return false;
     };
 
     return OperationInterfaceEditorControl;

@@ -134,6 +134,17 @@ define([
         }
     ];
 
+    var makeRestartButton = function(name, pluginId) {
+        return {
+            name: 'Restart ' + name,
+            icon: 'replay',
+            priority: 1000,
+            action: function(event) {
+                this.runExecutionPlugin(pluginId, event.shiftKey);
+            }
+        };
+    };
+
     return {
         HOME: MyPipelinesButtons,
         MyPipelines_META: MyPipelinesButtons,
@@ -198,12 +209,15 @@ define([
             }
         ],
         Job: [
+            makeRestartButton('Job', 'ExecuteJob'),
             {
                 name: 'Download Execution Files',
                 icon: 'play_for_work',
+                priority: 1,
                 href: download.execFiles
             }
         ],
+        Execution: [makeRestartButton('Execution', 'ExecutePipeline')],
         Pipeline: [
             {
                 name: 'Create new node',
