@@ -2,9 +2,11 @@
 /*jshint node:true, browser:true*/
 
 define([
+    'q',
     'text!./metadata.json',
     'plugin/ExecuteJob/ExecuteJob/ExecuteJob'
 ], function (
+    Q,
     pluginMetadata,
     PluginBase
 ) {
@@ -48,10 +50,15 @@ define([
     ExportProject.prototype.main = function (callback) {
         // Export the deepforge project as a torch project
         var files = {},
-            artifact;
+            artifactName = `TestProject`,  // FIXME: Change to project name
+            artifact = this.blobClient.createArtifact(artifactName);
 
         this.createClasses(files);  // Create the classes
         this.createCustomLayers(files);
+        this.createArchitectures(artifact)
+            .then(() => {
+                return artifact.addFiles(files)
+            })
             // operations
             // TODO
             // artifacts -> may need a bash script to download the data...
@@ -60,16 +67,46 @@ define([
             // TODO
             // README
             // TODO
-        var artifactName = `TestProject`;  // FIXME: Change to project name
-        artifact = this.blobClient.createArtifact(artifactName);
 
-        artifact.addFiles(files)
             .then(() => artifact.save())
             .then(hash => {
                 this.result.addArtifact(hash);
                 this.result.setSuccess(true);
                 this.createMessage(null, 'Created torch project!');
                 callback(null, this.result);
+            });
+    };
+
+    ExportProject.prototype.isArchDir = function (node) {
+        return this.core.getAttribute(node, 'name') === 'MyArchitectures';
+    };
+
+    ExportProject.prototype.createArchitectures = function (artifact) {
+        var archIds,
+            hashes,
+            files = {};
+
+        // Get all architecture ids
+        return this.core.loadChildren(this.rootNode)
+            .then(children => {
+                var archDir = children.find(node => this.isArchDir(node));
+                archIds = this.core.getChildrenPaths(archDir);
+
+                return Q.all(archIds.map(id => this.getPtrCodeHash(id)));
+            })
+            // Add the hashes by name
+            .then(_hashes => {
+                hashes = _hashes;
+                return Q.all(archIds.map(id => this.core.loadByPath(this.rootNode, id)));
+            })
+            .then(arches => {
+                var name;
+                // TODO: Detect duplicate names
+                for (var i = arches.length; i--;) {
+                    name = this.core.getAttribute(arches[i], 'name');
+                    files[`architectures/${name}.lua`] = hashes[i];
+                }
+                return artifact.addObjectHashes(files);
             });
     };
 
