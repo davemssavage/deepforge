@@ -478,8 +478,8 @@ define([
         // add the given files
         this.logger.info('About to create dist execution files');
         return this.createEntryFile(node, files)
-            .then(() => this.createClasses(node, files))
-            .then(() => this.createCustomLayers(node, files))
+            .then(() => this.createClasses(files))
+            .then(() => this.createCustomLayers(files))
             .then(() => this.createInputs(node, files))
             .then(() => this.createOutputs(node, files))
             .then(() => this.createMainFile(node, files))
@@ -507,7 +507,7 @@ define([
             });
     };
 
-    ExecuteJob.prototype.createClasses = function (node, files) {
+    ExecuteJob.prototype.createClasses = function (files) {
         var metaDict = this.core.getAllMetaNodes(this.rootNode),
             isClass,
             metanodes,
@@ -515,7 +515,7 @@ define([
             inheritanceLvl = {},
             code;
 
-        this.logger.info('Creating custom layer file...');
+        this.logger.info('Creating classes file...');
         metanodes = Object.keys(metaDict).map(id => metaDict[id]);
         isClass = this.getTypeDictFor('Complex', metanodes);
 
@@ -570,7 +570,7 @@ define([
         return isType;
     };
 
-    ExecuteJob.prototype.createCustomLayers = function (node, files) {
+    ExecuteJob.prototype.createCustomLayers = function (files) {
         var metaDict = this.core.getAllMetaNodes(this.rootNode),
             isCustomLayer,
             metanodes,
@@ -585,11 +585,18 @@ define([
             this.core.getMixinPaths(node).some(id => isCustomLayer[id]));
 
         // Get the code definitions for each
-        code = 'require \'nn\'\n\n' + customLayers
-            .map(node => this.core.getAttribute(node, 'code')).join('\n');
+        code = customLayers.map(node => `require './${this.core.getAttribute(node, 'name')}'`)
+            .join('\n');
+
+        customLayers.forEach(node => {
+            var name = this.core.getAttribute(node, 'name'),
+                code = `require 'nn'\n\n${this.core.getAttribute(node, 'code')}`;
+
+            files[`custom-layers/${name}.lua`] = code;
+        });
 
         // Create the custom layers file
-        files['custom-layers.lua'] = code;
+        files['custom-layers/init.lua'] = code;
     };
 
     ExecuteJob.prototype.createInputs = function (node, files) {

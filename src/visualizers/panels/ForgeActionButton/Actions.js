@@ -134,6 +134,7 @@ define([
         {
             name: 'Create new pipeline',
             icon: 'queue',
+            priority: 1,
             action: DeepForge.create.Pipeline
         }
     ];
@@ -155,7 +156,31 @@ define([
     };
 
     return {
-        HOME: MyPipelinesButtons,
+        HOME: MyPipelinesButtons.concat({
+            name: 'Export as Torch Project',
+            icon: 'launch',
+            priority: 0,
+            action: function () {
+                // TODO
+                var context = this.client.getCurrentPluginContext(pluginId),
+                    pluginId = 'ExportProject';
+
+                Q.ninvoke(this.client, 'runBrowserPlugin', pluginId, context)
+                    .then(res => {
+                        var hash = res.artifacts[0],
+                            url = this._blobClient.getDownloadURL(hash),
+                            anchor = document.createElement('a');
+
+                        anchor.setAttribute('target', '_self');
+                        anchor.setAttribute('href', url);
+
+                        console.log('should download the result!', res);
+                        anchor.click();
+                        Materialize.toast(res.messages[0].message, 2000);
+                    })
+                    .fail(err => Materialize.toast(`Export failed: ${err}`, 2000));
+            }
+        }),
         MyPipelines_META: MyPipelinesButtons,
         MyArchitectures_META: [
             {

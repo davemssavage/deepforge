@@ -44,6 +44,10 @@
       "ExecuteJob": {
         "src": "src/plugins/ExecuteJob",
         "test": "test/plugins/ExecuteJob"
+      },
+      "ExportProject": {
+        "src": "src/plugins/ExportProject",
+        "test": "test/plugins/ExportProject"
       }
     },
     "layouts": {},
