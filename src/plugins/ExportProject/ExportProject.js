@@ -56,6 +56,7 @@ define([
         this.createClasses(files);  // Create the classes
         this.createCustomLayers(files);
         this.createArchitectures(artifact)
+            .then(() => this.createExecutions())
             .then(() => {
                 return artifact.addFiles(files)
             })
@@ -65,7 +66,12 @@ define([
             // TODO
             // pipelines
             // TODO
+            // executions? Probably only the ones that are not in debug mode
+            // TODO
             // README
+            // TODO
+            // create the 'deepforge' replacement
+            //   - needs plotting and image fn-ality
             // TODO
 
             .then(() => artifact.save())
@@ -77,8 +83,50 @@ define([
             });
     };
 
+    var DIRS = {
+        Architectures: 'MyArchitectures',
+        Executions: 'MyExecutions'
+    };
+
     ExportProject.prototype.isArchDir = function (node) {
-        return this.core.getAttribute(node, 'name') === 'MyArchitectures';
+        return this.core.getAttribute(node, 'name') === DIRS.ArchDir;
+    };
+
+    ExportProject.prototype.getIdsForType = function (type) {
+        return this.core.loadChildren(this.rootNode)
+            .then(children => {
+                var dir = children.find(node => 
+                    this.core.getAttribute(node, 'name') === DIRS[type]);
+
+                return this.core.getChildrenPaths(dir);
+            });
+    };
+
+    ExportProject.prototype.createExecutions = function (files) {
+        var execs;
+
+        return this.getIdsForType('Executions')
+            .then(ids => Q.all(ids.map(id => this.core.loadByPath(this.rootNode, id))))
+            .then(allExecs => {
+                execs = allExecs  // Get all 'snapshotted' executions
+                    .filter(exec => this.core.getAttribute(exec, 'snapshot') === true);
+
+                console.log(`found ${execs.length} snapshotted execs!`);
+
+                return Q.all(execs.map(exec => this.createExecutionCode(exec)));
+            })
+            .then(code => {
+                var name;
+                for (var i = execs.length; i--;) {
+                    name = this.core.getAttribute(execs, 'name');
+                    files[`executions/${name}.lua`] = code[i];
+                }
+            });
+    };
+
+    ExportProject.prototype.createExecutionCode = function (node) {
+        // Generate the code for each!
+        // TODO
     };
 
     ExportProject.prototype.createArchitectures = function (artifact) {
@@ -87,11 +135,9 @@ define([
             files = {};
 
         // Get all architecture ids
-        return this.core.loadChildren(this.rootNode)
-            .then(children => {
-                var archDir = children.find(node => this.isArchDir(node));
-                archIds = this.core.getChildrenPaths(archDir);
-
+        return this.getIdsForType('Architectures')
+            .then(ids => {
+                archIds = ids;
                 return Q.all(archIds.map(id => this.getPtrCodeHash(id)));
             })
             // Add the hashes by name
