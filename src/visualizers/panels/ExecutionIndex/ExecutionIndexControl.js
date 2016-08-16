@@ -52,6 +52,13 @@ define([
         }
     };
 
+    ExecutionIndexControl.prototype.clearTerritory = function () {
+        if (this._territoryId) {
+            this._client.removeUI(this._territoryId);
+            this._territoryId = null;
+        }
+    };
+
     /* * * * * * * * Visualizer content update callbacks * * * * * * * */
     ExecutionIndexControl.prototype.selectedObjectChanged = function (nodeId) {
         var self = this;
@@ -59,10 +66,7 @@ define([
         self._logger.debug('activeObject nodeId \'' + nodeId + '\'');
 
         // Remove current territory patterns
-        if (self._currentNodeId) {
-            self._client.removeUI(self._territoryId);
-        }
-
+        self.clearTerritory();
         self._currentNodeId = nodeId;
 
         if (typeof self._currentNodeId === 'string') {
@@ -101,6 +105,8 @@ define([
                 desc.originTime = node.getAttribute('createdAt');
                 desc.originId = node.getPointer('origin').to;
                 desc.pipelineName = this._pipelineNames[desc.originId];
+                desc.startTime = node.getAttribute('startTime');
+                desc.endTime = node.getAttribute('endTime');
                 this._logger.debug(`Looking up pipeline name for ${desc.name}: ${desc.pipelineName}`);
 
                 // Create a territory for this origin and update it!
@@ -132,6 +138,7 @@ define([
             desc;
 
         points = node.getAttribute('points').split(';')
+            .filter(data => !!data)  // remove any ''
             .map(pair => {
                 var nums = pair.split(',').map(num => parseFloat(num));
                 return {
@@ -261,6 +268,7 @@ define([
     /* * * * * * * * Visualizer life cycle callbacks * * * * * * * */
     ExecutionIndexControl.prototype.destroy = function () {
         this._detachClientEventListeners();
+        this.clearTerritory();
     };
 
     ExecutionIndexControl.prototype._attachClientEventListeners = function () {

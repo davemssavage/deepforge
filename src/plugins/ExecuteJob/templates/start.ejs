@@ -25,7 +25,7 @@ requirejs([
     BlobClient
 ) {
     var url = process.env.ORIGIN_URL || 'http://127.0.0.1:8888',
-        CACHE_DIR = process.env.DEEPFORGE_CACHE || './worker-cache',
+        CACHE_DIR = process.env.DEEPFORGE_WORKER_CACHE || './worker-cache',
         protocol = url.split('://').shift(),
         address,
         port = (url.split(':') || ['80']).pop();
@@ -35,7 +35,12 @@ requirejs([
 
     // Create CACHE_DIR if it doesn't exist
     var prepareCache = function() {
-        return makeIfNeeded(CACHE_DIR);
+    var dirs = CACHE_DIR.replace(/\/$/, '').split('/'),
+        cacheParent;
+
+        dirs.pop();
+        cacheParent = dirs.join('/');
+        return makeIfNeeded(cacheParent).then(() => makeIfNeeded(CACHE_DIR));
     };
 
     var makeIfNeeded = function(dir) {
@@ -99,6 +104,12 @@ requirejs([
                 })
                 .fail(err => logger.error(`${filename} upload failed: ${err}`));
         });
+    };
+
+    var onStderr = function(data) {
+        var text = data.toString();
+        // Filter out directory label from stack traces
+        process.stdout.write(text.replace(/\.\.\.\/.*\/(main|deepforge|init).lua/g, '$1'));
     };
 
     var onStdout = function(data) {
@@ -199,7 +210,7 @@ requirejs([
             // Run 'th init.lua' and merge the stdout, stderr
             var job = spawn('th', ['init.lua']);
             job.stdout.on('data', onStdout);
-            job.stderr.on('data', data => process.stdout.write(data));
+            job.stderr.on('data', onStderr);
             job.on('close', code => {
                 exitCode = code;
                 log('script finished w/ exit code:', code);

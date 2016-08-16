@@ -4,6 +4,8 @@
 define([
     'plugin/PluginBase',
     'common/util/guid',
+    'deepforge/Constants',
+    'deepforge/utils',
     'js/RegistryKeys',
     'js/Panels/MetaEditor/MetaEditorConstants',
     'underscore',
@@ -12,6 +14,8 @@ define([
 ], function (
     PluginBase,
     generateGuid,
+    Constants,
+    utils,
     REGISTRY_KEYS,
     META_CONSTANTS,
     _,
@@ -129,11 +133,15 @@ define([
         categories.forEach(cat => {
             content[cat]
                 .forEach(layer => {
-                    var name = layer.name;
+                    var name = layer.name,
+                        node;
 
-                    nodes[name] = this.createMetaNode(name, nodes[cat], cat, layer);
+                    node = this.createMetaNode(name, nodes[cat], cat, layer);
                     // Make the node non-abstract
-                    this.core.setRegistry(nodes[name], 'isAbstract', false);
+                    if (node) {
+                        this.core.setRegistry(node, 'isAbstract', false);
+                        nodes[name] = node;
+                    }
                 });
         });
 
@@ -196,9 +204,14 @@ define([
         return JSON.parse(Schemas[schema]);
     };
 
-    var isBoolean = txt => {
-        return typeof txt === 'boolean' || (txt === 'false' || txt === 'true');
+    // Some helper methods w/ attribute handling
+    var LUA_TO_GME = {
+        boolean: 'boolean',
+        number: 'float',
+        string: 'string'
     };
+
+    var isLayerAttribute = type => type && type.substring(0, 3) === 'nn.';
 
     CreateTorchMeta.prototype.createMetaNode = function (name, base, tabName, layer) {
         var node = this.META[name],
@@ -207,6 +220,8 @@ define([
             position = this.getPositionFor(name, tabName),
             setters = {},
             defaults = {},
+            types = {},
+            type,
             attrs,
             desc;
 
@@ -214,6 +229,7 @@ define([
             attrs = layer.params;
             setters = layer.setters;
             defaults = layer.defaults;
+            types = layer.types || types;
         }
         if (!tabId) {
             this.logger.error(`No meta sheet for ${tabName}`);
@@ -257,15 +273,15 @@ define([
             // Remove attributes not in the given list
             var currentAttrs = this.core.getValidAttributeNames(node),
                 defVal,
-                rmAttrs;
+                rmAttrs,
+                simpleAttrs,
+                rmPtrs;
 
-            rmAttrs = _.difference(currentAttrs, attrs)  // old attribute names
+            simpleAttrs = attrs.filter(name => !isLayerAttribute(types[name]));
+            rmAttrs = _.difference(currentAttrs, simpleAttrs)  // old attribute names
                 .filter(attr => attr !== 'name')
                 .filter(attr => !setters[attr]);
 
-            if (rmAttrs.length) {
-                this.logger.debug(`Removing ${rmAttrs.join(', ')} from ${name}`);
-            }
             rmAttrs.forEach(attr => {
                 this.core.delAttributeMeta(node, attr);
                 if (this.core.getOwnAttribute(node, attr) !== undefined) {
@@ -273,35 +289,37 @@ define([
                 }
             });
 
-            attrs.forEach((name, index) => {
+            // Remove all old pointers
+            rmPtrs = _.difference(this.core.getPointerNames(node), currentAttrs)
+                .filter(ptr => ptr !== 'base');
+
+            if (rmPtrs.length + rmAttrs.length) {
+                this.logger.debug(`Removing ${rmPtrs.concat(rmAttrs).join(', ')} from ${name}`);
+            }
+            rmPtrs.forEach(ptr => this.core.delPointerMeta(node, ptr));
+
+            attrs.forEach(name => {
                 desc = {};
-                desc.argindex = index;
                 defVal = defaults.hasOwnProperty(name) ? defaults[name] : '';
-                this.addAttribute(name, node, desc, defVal);
+                type = LUA_TO_GME[types[name]];
+                if (type) {
+                    desc.type = type;
+                }
+                if (isLayerAttribute(types[name])) {  // Check if it is an nn layer type
+                    // If so, create a pointer rather than attribute
+                    this.addLayerAttribute(name, node);
+                    this.logger.debug(`${name} is a layer type attribute`);
+                } else {
+                    this.addAttribute(name, node, desc, defVal);
+                }
             });
+            this.core.setAttribute(node, Constants.CTOR_ARGS_ATTR, attrs.join(','));
 
             // Add the setters to the meta
             Object.keys(setters).forEach(name => {
-                var values;
-                desc = setters[name];
-                defVal = defaults.hasOwnProperty(name) ? defaults[name] : '';
-                if (desc.setterType === 'const') {
-                    values = Object.keys(desc.setterFn);
-                    desc.isEnum = true;
-                    desc.enumValues = values;
-                    if (values.every(isBoolean)) {
-                        if (!defaults.hasOwnProperty(name) && values.length === 1) {
-                            // there is only a method to toggle the flag to true/false, 
-                            // then the default must be the other one
-                            defVal = values[0] === 'true' ? false : true;
-                        }
-
-                        if (isBoolean(defVal)) {
-                            this.logger.debug(`setting ${name} to boolean`);
-                            desc.type = 'boolean';
-                        }
-                    }
-                }
+                desc = utils.getSetterSchema(name, setters, defaults);
+                defVal = desc.default;
+                delete desc.default;
                 this.addAttribute(name, node, desc, defVal);
             });
         }
@@ -337,6 +355,13 @@ define([
         };
     };
 
+    CreateTorchMeta.prototype.addLayerAttribute = function (name, node) {
+        // No default value support for now...
+        // Create a pointer of the given type on the node
+        this.core.setPointerMetaTarget(node, name, this.META.Architecture, 1, 1);
+        this.core.setPointerMetaLimits(node, name, 1, 1);
+    };
+
     CreateTorchMeta.prototype.addAttribute = function (name, node, schema, defVal) {
         schema.type = schema.type || 'string';
         if (schema.type === 'list') {  // FIXME: add support for lists
@@ -351,9 +376,6 @@ define([
             // Set the min, max
             schema.max = +schema.max;
         }
-
-        // Add the argindex flag
-        schema.argindex = schema.argindex;
 
         // Create the attribute and set the schema
         this.core.setAttributeMeta(node, name, schema);

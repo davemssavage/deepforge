@@ -104,9 +104,11 @@ define([
             // If starting with a pipeline, we will create an Execution first
             startPromise = this.createExecution(this.activeNode)
                 .then(execNode => {
+                    this.logger.debug(`Finished creating execution "${this.core.getAttribute(execNode, 'name')}"`);
                     this.activeNode = execNode;
                 });
         } else if (this.core.isTypeOf(this.activeNode, this.META.Execution)) {
+            this.logger.debug('Restarting execution');
             startPromise = Q();
         } else {
             return callback('Current node is not a Pipeline or Execution!', this.result);
@@ -122,9 +124,12 @@ define([
                 .filter(n => this.core.getParent(n) === this.activeNode);
 
             this.pipelineName = this.core.getAttribute(this.activeNode, 'name');
+            this.logger.debug(`Loaded subtree of ${this.pipelineName}. About to build cache`);
             this.buildCache(subtree);
+            this.logger.debug('Parsing execution for job inter-dependencies');
             this.parsePipeline(children);  // record deps, etc
 
+            this.logger.debug('Clearing old results');
             return this.clearResults();
         })
         .then(() => this.executePipeline())
@@ -176,6 +181,8 @@ define([
         this.core.setAttribute(this.activeNode, 'status', 'running');
         this.logger.info('Setting all jobs status to "pending"');
         this.logger.debug(`Making a commit from ${this.currentHash}`);
+        this.core.setAttribute(this.activeNode, 'startTime', Date.now());
+        this.core.delAttribute(this.activeNode, 'endTime');
         return this.save(`Initializing ${this.pipelineName} for execution`);
     };
 
@@ -314,6 +321,7 @@ define([
         }
 
         this.logger.debug(`Pipeline "${name}" complete!`);
+        this.core.setAttribute(this.activeNode, 'endTime', Date.now());
         this.core.setAttribute(this.activeNode, 'status',
             (this.pipelineError ? 'failed' : (this.canceled ? 'canceled' : 'success')));
 

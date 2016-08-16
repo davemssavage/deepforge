@@ -302,6 +302,24 @@ define([
             children.find(child => this.isMetaTypeOf(child, this.META.Operation)));
     };
 
+    ExecuteJob.prototype.onBlobRetrievalFail = function (node, input, err) {
+        var job = this.core.getParent(node),
+            e = `Failed to retrieve "${input}" (${err})`,
+            consoleErr = `[0;31mFailed to execute operation: ${e}[0m`;
+
+        consoleErr += [
+            '\n\nA couple things to check out:\n',
+            '- Has the location of DeepForge\'s blob changed?',
+            '    (Configurable using "blob.dir" in the deepforge config' +
+            ' or setting the DEEPFORGE_BLOB_DIR environment variable)\n',
+
+            '- Was this project created using a different blob location?'
+        ].join('\n    ');
+
+        this.core.setAttribute(job, 'stdout', consoleErr);
+        this.onOperationFail(node, `Blob retrieval failed for "${name}": ${e}`);
+    };
+
     ExecuteJob.prototype.executeJob = function (job) {
         return this.getOperation(job).then(node => {
             var jobId = this.core.getPath(job),
@@ -335,7 +353,8 @@ define([
                             var hash = files.inputAssets[input];
 
                             // data asset for "input"
-                            return this.blobClient.getMetadata(hash);
+                            return this.blobClient.getMetadata(hash)
+                                .fail(err => this.onBlobRetrievalFail(job, input, err));
                         })
                     );
                 })
@@ -653,12 +672,18 @@ define([
             })
             .then(_tplContents => {
                 tplContents = _tplContents;
-                var hashes = inputs
-                    // storing the hash for now...
-                    .map(pair =>
-                        files.inputAssets[pair[0]] = this.core.getAttribute(pair[2], 'data')
-                    );
-                return Q.all(hashes.map(h => this.blobClient.getMetadata(h)));
+                var hashes = inputs.map(pair => {
+                    var hash = this.core.getAttribute(pair[2], 'data');
+                    files.inputAssets[pair[0]] = hash;
+                    return {
+                        hash: hash,
+                        name: pair[0]
+                    };
+                });
+
+                return Q.all(hashes.map(pair => 
+                    this.blobClient.getMetadata(pair.hash)
+                        .fail(err => this.onBlobRetrievalFail(node, pair.name, err))));
             })
             .then(metadatas => {
                 // Create the deserializer
@@ -812,10 +837,17 @@ define([
                     return executor.getOutput(hash, currentLine, actualLine+1)
                         .then(outputLines => {
                             var stdout = this.core.getAttribute(job, 'stdout'),
-                                output = outputLines.map(o => o.output).join('');
+                                output = outputLines.map(o => o.output).join(''),
+                                last = stdout.lastIndexOf('\n'),
+                                lastLine;
 
                             // parse deepforge commands
-                            output = this.parseForMetadataCmds(job, output);
+                            if (last !== -1) {
+                                stdout = stdout.substring(0, last+1);
+                                lastLine = stdout.substring(last+1);
+                                output = lastLine + output;
+                            }
+                            output = this.processStdout(job, output, true);
 
                             if (output) {
                                 stdout += output;
@@ -857,7 +889,7 @@ define([
                         })
                         .then(stdout => {
                             // Parse the remaining code
-                            stdout = this.parseForMetadataCmds(job, stdout, true);
+                            stdout = this.processStdout(job, stdout);
                             this.core.setAttribute(job, 'stdout', stdout);
                             if (info.status !== 'SUCCESS') {
                                 // Download all files
@@ -960,10 +992,37 @@ define([
         LocalExecutor.prototype
     );
 
+    ExecuteJob.prototype.processStdout = function (job, text, continued) {
+        // resolve \r
+        var lines,
+            chars,
+            result,
+            i = 0;
+
+        text = text.replace(/\u0000/g, '');
+        lines = text.split('\n');
+        for (var l = lines.length-1; l >= 0; l--) {
+            i = 0;
+            chars = lines[l].split('');
+            result = [];
+
+            for (var c = 0; c < chars.length; c++) {
+                if (chars[c] === '\r') {
+                    i = 0;
+                }
+                result[i] = chars[c];
+                i++;
+            }
+            lines[l] = result.join('');
+        }
+
+        // ... and metadata commands
+        return this.parseForMetadataCmds(job, lines, !continued);
+    };
+
     //////////////////////////// Metadata ////////////////////////////
-    ExecuteJob.prototype.parseForMetadataCmds = function (job, text, skip) {
+    ExecuteJob.prototype.parseForMetadataCmds = function (job, lines, skip) {
         var jobId = this.core.getPath(job),
-            lines = text.split('\n'),
             args,
             result = [],
             cmdCnt = 0,

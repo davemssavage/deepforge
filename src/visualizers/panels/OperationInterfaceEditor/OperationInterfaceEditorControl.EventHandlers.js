@@ -9,6 +9,7 @@ define([
         this._widget.allDataTypeIds = this.allDataTypeIds.bind(this);
         this._widget.allValidReferences = this.allValidReferences.bind(this);
         this._widget.addRefTo = this.addRefTo.bind(this);
+        this._widget.setRefType = this.setRefType.bind(this);
         this._widget.changePtrName = this.changePtrName.bind(this);
         this._widget.removePtr = this.removePtr.bind(this);
         this._widget.getCreationNode = this.getCreationNode.bind(this);
@@ -135,6 +136,29 @@ define([
             ]
         });
         this._client.makePointer(this._currentNodeId, ptrName, null);
+        this._client.completeTransaction();
+    };
+
+    OperationInterfaceEditorEvents.prototype.setRefType = function(ref, targetId) {
+        var meta = this._client.getPointerMeta(this._currentNodeId, ref),
+            msg = `Setting ${ref} reference type to ${targetId}`;
+
+        if (!meta) {
+            this.logger.debug(`No meta found for ${ref}. Creating a new reference to ${targetId}`);
+            meta = {
+                min: 1,
+                max: 1,
+                items: []
+            };
+        }
+
+        meta.items.push({
+            id: targetId,
+            max: 1
+        });
+
+        this._client.startTransaction(msg);
+        this._client.setPointerMeta(this._currentNodeId, ref, meta);
         this._client.completeTransaction();
     };
 

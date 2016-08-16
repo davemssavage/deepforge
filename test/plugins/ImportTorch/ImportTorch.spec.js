@@ -60,7 +60,7 @@ describe('ImportTorch', function () {
                 checker = new GraphChecker({
                     core: core,
                     ignore: {
-                        attributes: []
+                        attributes: ['ctor_arg_order']
                     }
                 });
                 return project.createBranch('test', commitHash);
@@ -192,6 +192,11 @@ describe('ImportTorch', function () {
 
     it('should support "require \'rnn\'"', function(done) {
         importTorch('test', 'require \'nn\'\nrequire \'rnn\'')
+            .nodeify(done);
+    });
+
+    it('should not need require \'nn\'', function(done) {
+        importTorch('test', 'nn.Sequential():add(nn.Linear(100, 50))')
             .nodeify(done);
     });
 });

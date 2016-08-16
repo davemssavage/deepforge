@@ -83,20 +83,6 @@
 
     //////////////////////// Setters END //////////////////////// 
 
-    var findInitParams = function(ast){
-        // Find '__init' function
-        var params;
-        ast.block.stats.forEach(function(block){
-            if(block.key && block.key.val == '__init' && block.func){
-                params = block.func.args;
-                if(params.length === 0 && block.func.varargs){
-                    params[0] = 'params';
-                }
-            }
-        });
-        return params;
-    };
-
     var isInitFn = function(node, className) {
         if (node.type === 'stat.method' && node.self.val === className) {
             return node.key.val === '__init';
@@ -154,7 +140,7 @@
                 curr.left.type === 'variable' && curr.right.type.indexOf('const') !== -1) {
                 varName = curr.left.val;
                 if (varUsageCnt[varName] === 1) {
-                    value = curr.right.type === 'const.nil' ? null : curr.right.val;
+                    value = curr.right.type === 'const.nil' ? null : curr.right;
                     dict[varName] = value;
                 }
             }
@@ -163,18 +149,124 @@
         return dict;
     };
 
-    var copyAttrs = function(attrs, from, to) {
+    var copyNodeValues = function(attrs, from, to) {
+        var value;
         for (var i = attrs.length; i--;) {
-            to[attrs[i]] = from[attrs[i]];
+            value = from[attrs[i]] || null;
+            if (value) {
+                value = (value && value.hasOwnProperty('val')) ? value.val : value;
+                to[attrs[i]] = value;
+            }
         }
         return to;
+    };
+
+    var getTypeCheckInfo = function(cond) {
+        var caller,
+            method,
+            target,
+            expType;
+
+        // Check for torch.isTypeOf:
+        if (cond.type === 'expr.call' && cond.func.type === 'expr.index') {
+            caller = cond.func.self.val;
+            method = cond.func.key.val;
+
+            if (cond.type === 'expr.call' && caller === 'torch') {
+                target = cond.args[0].val;
+                if (method === 'isTypeOf' && target) {
+                    expType = cond.args[1].val;
+                    return {
+                        target,
+                        type: expType
+                    };
+                }
+            }
+        } else if (cond.type === 'expr.op') {  // torch.type() === ''
+            // Check right side, too!
+            var sides = [cond.left, cond.right],
+                side,
+                otherSide;
+
+            for (var i = sides.length; i--;) {
+                side = sides[i];
+                otherSide = sides[(i+1)%2];
+                if (side.type === 'expr.call' && side.func.type === 'expr.index') {
+                    // Is it torch?
+                    caller = side.func.self.val;
+                    method = side.func.key.val;
+                    if (caller === 'torch' && method === 'type') {
+                        if (side.args[0].type === 'variable') {
+                            target = side.args[0].val;
+                            if (otherSide.type === 'const.string') {
+                                expType = otherSide.val;
+
+                                return {
+                                    target: target,
+                                    type: expType
+                                };
+                            }
+                        }
+                        
+                    }
+                }
+            }
+            return null;
+        }
+    };
+
+    var isError = function(stat) {
+        var fn;
+        if (stat.type === 'stat.expr' && stat.expr.type === 'expr.call') {
+            fn = stat.expr.func.val;
+            return fn === 'error';
+        }
+        return false;
+    };
+
+    var inferParamTypes = function(node, paramDefs) {
+        var types = {},
+            check,
+            cond;
+
+        // Infer from assertions
+        luajs.codegen.traverse(curr => {
+            // check for 'assert's that check type
+            if (curr.type === 'expr.call' && curr.func.val === 'assert') {
+                cond = curr.args[0];
+                check = getTypeCheckInfo(cond);
+                if (check) {
+                    types[check.target] = check.type;
+                }
+            } else if (curr.type === 'stat.if' && curr.cond.op === 'uop.not') {
+                // if statements throwing errors on type mismatch
+                cond = curr.cond.operand;  // non-negated version
+                // Check that it throws an error on true
+                if (curr.tblock.stats.some(isError)) {
+                    check = getTypeCheckInfo(cond);
+                    if (check) {
+                        types[check.target] = check.type;
+                    }
+                }
+            }
+        })(node);
+
+        // Infer from defaults
+        Object.keys(paramDefs).forEach(param => {
+            var val = paramDefs[param];
+            if (val) {  // initialized to 'null' doesn't help us...
+                types[param] = val.type.replace('const.', '');
+            }
+        });
+
+        return types;
     };
 
     var findTorchClass = function(ast){ 
         var torchClassArgs,  // args for `torch.class(...)`
             name = '',
             baseType,
-            params = [],
+            params,
             setters = {},
             defaults = {},
             paramDefs,
@@ -191,7 +283,6 @@
                     name = torchClassArgs[0];
                     if(name !== ''){
                         name = name.replace('nn.', '');
-                        params = findInitParams(ast);
                         if (torchClassArgs.length > 1) {
                             baseType = torchClassArgs[1].replace('nn.', '');
                         }
@@ -200,9 +291,10 @@
             });
         }
 
-        // Get the setters and defaults
+        // Get the setters, defaults and type info (inferred)
         var setterNames,
             schema,
+            types,
             values;
 
         luajs.codegen.traverse((curr, parent) => {
@@ -227,19 +319,26 @@
             } else if (isInitFn(curr, name)) {  // Record the defaults
                 paramDefs = getAttrsAndVals(curr);
                 attrDefs = getClassAttrDefs(curr);
+                types = inferParamTypes(curr, paramDefs);
+
+                // get ctor args
+                params = curr.func.args;
+                if(params.length === 0 && curr.func.varargs){
+                    params.push('params');
+                }
             }
 
         })(ast);
 
         // Get the defaults for the params from defs
-        if (paramDefs) {
-            copyAttrs(params, paramDefs, defaults);
+        if (paramDefs && params) {
+            copyNodeValues(params, paramDefs, defaults);
         }
 
         // Get the defaults for the setters from attrDefs
         if (attrDefs) {
             setterNames = Object.keys(setters);
-            copyAttrs(setterNames, attrDefs, defaults);
+            copyNodeValues(setterNames, attrDefs, defaults);
         }
 
         // Remove any const setters w/ only one value and no default
@@ -263,13 +362,18 @@
             baseType,
             params,
             setters,
+            types,
             defaults
         };
     };
 
     LayerParser.parse = function(text) {
-        var ast = luajs.parser.parse(text);
-        return findTorchClass(ast);
+        try {
+            var ast = luajs.parser.parse(text);
+            return findTorchClass(ast);
+        } catch (e) {
+            return null;
+        }
     };
 
     return LayerParser;
