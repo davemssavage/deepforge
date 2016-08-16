@@ -2,10 +2,12 @@
 /*jshint node:true, browser:true*/
 
 define([
+    'deepforge/Constants',
     'q',
     'text!./metadata.json',
     'plugin/ExecuteJob/ExecuteJob/ExecuteJob'
 ], function (
+    CONSTANTS,
     Q,
     pluginMetadata,
     PluginBase
@@ -50,19 +52,20 @@ define([
     ExportProject.prototype.main = function (callback) {
         // Export the deepforge project as a torch project
         var files = {},
-            artifactName = `TestProject`,  // FIXME: Change to project name
+            artifactName = this.projectName,
             artifact = this.blobClient.createArtifact(artifactName);
 
         this.createClasses(files);  // Create the classes
         this.createCustomLayers(files);
         this.createArchitectures(artifact)
-            .then(() => this.createExecutions())
+            .then(() => this.createOperations(files))
+            // artifacts -> may need a bash script to download the data...
+            //.then(() => this.addArtifacts(files))
+            .then(() => this.createExecutions(files))
             .then(() => {
-                return artifact.addFiles(files)
+                return artifact.addFiles(files);
             })
             // operations
-            // TODO
-            // artifacts -> may need a bash script to download the data...
             // TODO
             // pipelines
             // TODO
@@ -80,11 +83,13 @@ define([
                 this.result.setSuccess(true);
                 this.createMessage(null, 'Created torch project!');
                 callback(null, this.result);
-            });
+            })
+            .fail(err => callback(err));
     };
 
     var DIRS = {
         Architectures: 'MyArchitectures',
+        Operations: 'MyOperations',
         Executions: 'MyExecutions'
     };
 
@@ -102,31 +107,99 @@ define([
             });
     };
 
+    ExportProject.prototype.getNodesForType = function (type) {
+        this.logger.debug(`Getting nodes of type "${type}"`);
+        return this.getIdsForType(type)
+            .then(ids => Q.all(ids.map(id => this.core.loadByPath(this.rootNode, id))));
+    };
+
     ExportProject.prototype.createExecutions = function (files) {
         var execs;
 
-        return this.getIdsForType('Executions')
-            .then(ids => Q.all(ids.map(id => this.core.loadByPath(this.rootNode, id))))
-            .then(allExecs => {
-                execs = allExecs  // Get all 'snapshotted' executions
-                    .filter(exec => this.core.getAttribute(exec, 'snapshot') === true);
-
-                console.log(`found ${execs.length} snapshotted execs!`);
+        this.logger.debug('Adding execution files');
+        return this.getNodesForType('Executions')
+            .then(_execs => {
+                execs = _execs;
+                this.logger.debug(`found ${execs.length} execs!`);
 
                 return Q.all(execs.map(exec => this.createExecutionCode(exec)));
             })
             .then(code => {
                 var name;
                 for (var i = execs.length; i--;) {
-                    name = this.core.getAttribute(execs, 'name');
+                    name = this.core.getAttribute(execs[i], 'name');
                     files[`executions/${name}.lua`] = code[i];
                 }
             });
     };
 
     ExportProject.prototype.createExecutionCode = function (node) {
+        var name = this.core.getAttribute(node, 'name');
+        this.logger.debug(`Creating code for "${name}" execution`);
         // Generate the code for each!
         // TODO
+        // If snapshot, define operations at the top of the file
+        // TODO
+        // Otherwise, simply reference them from the operations directory
+        // TODO
+        return `-- code for ${name}`;
+    };
+
+    ExportProject.prototype.createOperations = function (files) {
+        var names;
+        this.logger.debug('About to generate operation code');
+        return this.getNodesForType('Operations')
+            .then(ops => {
+                this.logger.debug(`Found ${ops.length} operation definitions`);
+                names = ops.map(op => this.core.getAttribute(op, 'name'));
+                return Q.all(ops.map(n => this.createOperationCode(n)));
+            })
+            .then(code => {
+                for (var i = code.length; i--;) {
+                    this.logger.debug(`Adding operation code for ${names[i]}`);
+                    files[`operations/${names[i]}.lua`] = code[i];
+                }
+                return files;
+            });
+    };
+
+    ExportProject.prototype.createOperationCode = function (opNode) {
+        var name = this.core.getAttribute(opNode, 'name'),
+            safeName = name.replace(/[^a-zA-Z0-9_]+/g, '_'),
+            code,
+            opCode = this.core.getAttribute(opNode, 'code'),
+            args = [],
+            skipAttrs,
+            attrs;
+
+        this.logger.debug(`Creating code for "${name}" operation`);
+
+        skipAttrs = {
+            code: true,
+            name: true
+        };
+        skipAttrs[CONSTANTS.LINE_OFFSET] = true;
+
+        attrs = this.core.getValidAttributeNames(opNode)
+            .filter(attr => !skipAttrs[attr]);
+
+        // Check for attributes
+        if (attrs.length) {
+            args.push('attributes');
+        }
+
+        // Get the input names
+        // TODO
+        // args are sorted alphabetically
+        // TODO
+
+        // Indent the opCode
+        opCode = '   \n' + opCode.replace(/^[\n]+/, '').replace(/\n/g, '\n   ');
+        code = `-- code for the ${name} operation\n` + 
+            `local function ${safeName} (${args.join(', ')})${opCode}` + 
+            `\nend\n\nreturn ${safeName}`;
+        
+        return code;
     };
 
     ExportProject.prototype.createArchitectures = function (artifact) {
@@ -135,6 +208,7 @@ define([
             files = {};
 
         // Get all architecture ids
+        this.logger.debug('About to generate the architecture code');
         return this.getIdsForType('Architectures')
             .then(ids => {
                 archIds = ids;
@@ -150,8 +224,10 @@ define([
                 // TODO: Detect duplicate names
                 for (var i = arches.length; i--;) {
                     name = this.core.getAttribute(arches[i], 'name');
+                    this.logger.debug(`Adding code for "${name}" architecture`);
                     files[`architectures/${name}.lua`] = hashes[i];
                 }
+                this.logger.debug('Adding architectures by hash');
                 return artifact.addObjectHashes(files);
             });
     };
