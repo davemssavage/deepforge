@@ -1,4 +1,4 @@
-/*globals define*/
+/*globals define, _*/
 /*jshint node:true, browser:true*/
 
 define([
@@ -6,12 +6,14 @@ define([
     'q',
     'text!./metadata.json',
     'text!./ArtifactReadme.md',
+    'text!./ProjectReadme.md',
     'plugin/ExecuteJob/ExecuteJob/ExecuteJob'
 ], function (
     CONSTANTS,
     Q,
     pluginMetadata,
     ArtifactReadme,
+    ProjectReadme,
     PluginBase
 ) {
     'use strict';
@@ -57,6 +59,11 @@ define([
             artifactName = this.projectName,
             artifact = this.blobClient.createArtifact(artifactName);
 
+        // README
+        files['README.md'] = _.template(ProjectReadme)({
+            projectName: this.projectName
+        });
+
         this.createClasses(files);  // Create the classes
         this.createCustomLayers(files);
         // Add deepforge object
@@ -71,12 +78,6 @@ define([
             .then(() => {
                 return artifact.addFiles(files);
             })
-            // pipelines
-            // TODO
-            // executions? all of them...
-            // TODO
-            // README
-            // TODO
             .then(() => artifact.save())
             .then(hash => {
                 this.result.addArtifact(hash);
@@ -150,8 +151,24 @@ define([
     ExportProject.prototype.createPipelines = function (files) {
         // Operations in a pipeline should first check a global config
         // Pipelines should have a global config
+        // The pipelines already have the attributes set... They are basically indistinguishable from (debug) executions
+        var names;
         return this.getNodesForType('Pipelines')
+            .then(nodes => {
+                // TODO: name collisions
+                names = nodes.map(node => this.core.getAttribute(node, 'name'));
+                return Q.all(nodes.map(node => this.createPipelineCode(node)));
+            })
+            .then(code => {
+                for (var i = code.length; i--;) {
+                    files[`pipelines/${names[i]}.lua`] = code[i];
+                }
+            });
+    };
+
+    ExportProject.prototype.createPipelineCode = function (node) {
         // TODO
+        return `-- pipeline code for ${this.core.getAttribute(node, 'name')}`;
     };
 
     ExportProject.prototype.createExecutions = function (files) {
