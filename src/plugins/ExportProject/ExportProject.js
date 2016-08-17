@@ -59,26 +59,24 @@ define([
 
         this.createClasses(files);  // Create the classes
         this.createCustomLayers(files);
+        // Add deepforge object
+        //   - needs plotting and image fn-ality
+        // TODO
         this.createArchitectures(artifact)
             .then(() => this.createOperations(files))
             // artifacts -> may need a bash script to download the data...
             .then(() => this.addArtifacts(files))
+            .then(() => this.createPipelines(files))
             .then(() => this.createExecutions(files))
             .then(() => {
                 return artifact.addFiles(files);
             })
-            // operations
-            // TODO
             // pipelines
             // TODO
-            // executions? Probably only the ones that are not in debug mode
+            // executions? all of them...
             // TODO
             // README
             // TODO
-            // create the 'deepforge' replacement
-            //   - needs plotting and image fn-ality
-            // TODO
-
             .then(() => artifact.save())
             .then(hash => {
                 this.result.addArtifact(hash);
@@ -92,6 +90,7 @@ define([
     var DIRS = {
         Architectures: 'MyArchitectures',
         Operations: 'MyOperations',
+        Pipelines: 'MyPipelines',
         Artifacts: 'MyArtifacts',
         CustomLayers: 'MyLayers',
         Executions: 'MyExecutions'
@@ -129,6 +128,7 @@ define([
                 var code = '-- download large artifacts\n',
                     name,
                     hash,
+                    gitignore = '',
                     url;
 
                 // TODO: Fix name collisions
@@ -137,15 +137,20 @@ define([
                     hash = this.core.getAttribute(nodes[i], 'data');
                     url = this.getBlobURL(hash);
                     code += `wget -O artifacts/${name}.t7 ${url}\n`;
+                    gitignore += `${name}.t7\n`;
                 }
+
                 // Add wget url's
                 files['download_artifacts.sh'] = code;
                 files['artifacts/README.md'] = ArtifactReadme;
+                files['artifacts/.gitignore'] = gitignore;
             });
     };
 
     ExportProject.prototype.createPipelines = function (files) {
-        //return this.getNodesForType('Pipelines')
+        // Operations in a pipeline should first check a global config
+        // Pipelines should have a global config
+        return this.getNodesForType('Pipelines')
         // TODO
     };
 
@@ -232,9 +237,9 @@ define([
         // TODO
 
         // Indent the opCode
-        opCode = '   \n' + opCode.replace(/^[\n]+/, '').replace(/\n/g, '\n   ');
+        opCode = opCode.replace(/^[\n]+/, '').replace(/\n/g, '\n   ');
         code = `-- code for the ${name} operation\n` + 
-            `local function ${safeName} (${args.join(', ')})${opCode}` + 
+            `local function ${safeName} (${args.join(', ')})\n   ${opCode}` + 
             `\nend\n\nreturn ${safeName}`;
         
         return code;
