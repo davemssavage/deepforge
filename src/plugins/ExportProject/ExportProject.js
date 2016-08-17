@@ -5,11 +5,13 @@ define([
     'deepforge/Constants',
     'q',
     'text!./metadata.json',
+    'text!./ArtifactReadme.md',
     'plugin/ExecuteJob/ExecuteJob/ExecuteJob'
 ], function (
     CONSTANTS,
     Q,
     pluginMetadata,
+    ArtifactReadme,
     PluginBase
 ) {
     'use strict';
@@ -60,7 +62,7 @@ define([
         this.createArchitectures(artifact)
             .then(() => this.createOperations(files))
             // artifacts -> may need a bash script to download the data...
-            //.then(() => this.addArtifacts(files))
+            .then(() => this.addArtifacts(files))
             .then(() => this.createExecutions(files))
             .then(() => {
                 return artifact.addFiles(files);
@@ -90,6 +92,8 @@ define([
     var DIRS = {
         Architectures: 'MyArchitectures',
         Operations: 'MyOperations',
+        Artifacts: 'MyArtifacts',
+        CustomLayers: 'MyLayers',
         Executions: 'MyExecutions'
     };
 
@@ -107,10 +111,42 @@ define([
             });
     };
 
+    ExportProject.prototype.getBlobURL = function (hash) {
+        var url = this.blobClient.getDownloadURL(hash);
+        return `${window.location.protocol}//${window.location.host}${url}`;
+    };
+
     ExportProject.prototype.getNodesForType = function (type) {
         this.logger.debug(`Getting nodes of type "${type}"`);
         return this.getIdsForType(type)
             .then(ids => Q.all(ids.map(id => this.core.loadByPath(this.rootNode, id))));
+    };
+
+    ExportProject.prototype.addArtifacts = function (files) {
+        return this.getNodesForType('Artifacts')
+            .then(nodes => {
+                // Create a bash script to download all the data
+                var code = '-- download large artifacts\n',
+                    name,
+                    hash,
+                    url;
+
+                // TODO: Fix name collisions
+                for (var i = nodes.length; i--;) {
+                    name = this.core.getAttribute(nodes[i], 'name');
+                    hash = this.core.getAttribute(nodes[i], 'data');
+                    url = this.getBlobURL(hash);
+                    code += `wget -O artifacts/${name}.t7 ${url}\n`;
+                }
+                // Add wget url's
+                files['download_artifacts.sh'] = code;
+                files['artifacts/README.md'] = ArtifactReadme;
+            });
+    };
+
+    ExportProject.prototype.createPipelines = function (files) {
+        //return this.getNodesForType('Pipelines')
+        // TODO
     };
 
     ExportProject.prototype.createExecutions = function (files) {
@@ -120,7 +156,9 @@ define([
         return this.getNodesForType('Executions')
             .then(_execs => {
                 execs = _execs;
-                this.logger.debug(`found ${execs.length} execs!`);
+                // Should I only grab snapshots? even snapshots might have configs that are special...
+                //execs = _execs.filter(exec => this.core.getAttribute(exec, 'isSnapshot'));
+                this.logger.debug(`found ${execs.length} snapshotted execs!`);
 
                 return Q.all(execs.map(exec => this.createExecutionCode(exec)));
             })
